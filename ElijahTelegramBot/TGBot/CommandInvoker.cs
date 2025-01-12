@@ -122,7 +122,7 @@ namespace ElijahTelegramBot.TGBot
                 if (useRandom)
                 {
                     var getRandomPathResult = GetRandomPath(path, new string[] { "*" });
-                    if (getRandomPathResult.success) return getRandomPathResult;
+                    if (!getRandomPathResult.success) return getRandomPathResult;
                     path = getRandomPathResult.errorMessage;
                 }
                 Logger.Log(Logger.LogLevel.Info, $"Выбранный файл для команды {targetCommand.InvokeCommand}: {path}");
@@ -135,10 +135,21 @@ namespace ElijahTelegramBot.TGBot
                 string? filename = Path.GetFileName(path);
                 if (string.IsNullOrEmpty(filename)) return (false, "", Logger.LogLevel.Error);
                 await using Stream stream = System.IO.File.OpenRead(path);
-                await _botClient.SendDocument(IDs.chatID,
-                    document: Telegram.Bot.Types.InputFile.FromStream(stream, filename),
+                if (filename.ToLower().EndsWith(".mp4"))
+                {
+                    await _botClient.SendVideo(IDs.chatID,
+                    video: Telegram.Bot.Types.InputFile.FromStream(stream, filename),
                     caption: replyText);
+                }
+                else
+                {
+                    await _botClient.SendDocument(IDs.chatID,
+                        document: Telegram.Bot.Types.InputFile.FromStream(stream, filename),
+                        caption: replyText);
+                }
+                stream.Dispose();
                 return (true, $"Успешно отправлен файл в чат {IDs.chatID}: {path}", Logger.LogLevel.Success);
+                
             }
             catch (Exception CommandInvocationException)
             {

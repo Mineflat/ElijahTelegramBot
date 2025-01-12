@@ -17,12 +17,9 @@ namespace ElijahTelegramBot.TGBot
         public static ReceiverOptions? _receiverOptions { get; protected set; }
         public static CancellationTokenSource? _cts { get; protected set; }
         public static ushort BotErrorsLeft { get; protected set; } = 5;
-
         private static string _configurationPath = string.Empty;
-
         public static List<(string roleName, string comandName, BotAction command, List<long> UserIds)> _roleCommandRatio
             = new List<(string roleName, string comandName, BotAction command, List<long> UserIds)>();
-
         private static System.Threading.Timer? timer;
         public TGBot(string configurationPath)
         {
@@ -247,7 +244,6 @@ namespace ElijahTelegramBot.TGBot
                 Logger.Log(Logger.LogLevel.Debug, $"Получено обновление типа {update.Type}");
             }
         }
-
         private static async Task CheckSystemCommand(string messageText, long chatID)
         {
             if (_botClient == null)
@@ -269,7 +265,6 @@ namespace ElijahTelegramBot.TGBot
             }
             Logger.Log(Logger.LogLevel.Info, $"Инициализирован перезапуск бота пользователем {WorkingConfiguration.AdminID} в чате {chatID}");
         }
-
         public static Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
         {
             Logger.Log(Logger.LogLevel.Error,
