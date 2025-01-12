@@ -1,20 +1,9 @@
 ﻿using ElijahTelegramBot.Core;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
-using System.IO;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
-using System.Threading;
-using System.Threading.Channels;
-using Microsoft.Extensions.Configuration;
 using System.Data;
-using Polly;
-using System.Runtime.CompilerServices;
 
 
 namespace ElijahTelegramBot.TGBot
@@ -31,12 +20,13 @@ namespace ElijahTelegramBot.TGBot
 
         private static string _configurationPath = string.Empty;
 
-        private static List<(string roleName, string comandName, BotAction command)> _roleCommandRatio
-            = new List<(string roleName, string comandName, BotAction command)>();
+        public static List<(string roleName, string comandName, BotAction command, List<long> UserIds)> _roleCommandRatio
+            = new List<(string roleName, string comandName, BotAction command, List<long> UserIds)>();
 
         private static System.Threading.Timer? timer;
         public TGBot(string configurationPath)
         {
+            TGBot._roleCommandRatio.Clear();
             _configurationPath = configurationPath;
             var initResult = InitConfiguration();
             Logger.Log(initResult.logLevel, initResult.errorMessage);
@@ -160,11 +150,6 @@ namespace ElijahTelegramBot.TGBot
                 {
                     var verificationResult = comand.Verify();
                     Logger.Log(verificationResult.logLevel, verificationResult.errorMessage);
-                    if (verificationResult.success && comand.ComandEnabled)
-                    {
-                        comand.RoleNames.ForEach(x => _roleCommandRatio.Add((x, comand.InvokeCommand, comand)));
-                        Logger.Log(Logger.LogLevel.Debug, $"Успешно добавлена команда {comand.InvokeCommand} с типом {comand.Type}");
-                    }
                 }
             }
             catch (Exception initExeption)
@@ -233,75 +218,29 @@ namespace ElijahTelegramBot.TGBot
                     }
                     Logger.Log(Logger.LogLevel.Message, $"[{update.Message.From.Username}] {messageText}");
                     if (update.Message.From.Id == WorkingConfiguration.AdminID) _ = CheckSystemCommand(messageText, chatID).ConfigureAwait(true);
-                    // Получаем объект команды
-                    var targetCommand = _roleCommandRatio.FirstOrDefault(x => x.comandName.Trim().ToLower().StartsWith(messageText)).command;
-
-                    if (targetCommand == null) return;
-                    // Получаем роли пользователя по указанным ID
-                    List<BotRole> grantedRoles = AvailebleRoles.FindAll(x => x.UserIds.Contains(update.Message.From.Id));
-                    // Пользователь с таким ID не имеет никаких ролей на сервере
-                    if (grantedRoles == null)
+                    // Если команда начинается с "!" и не разделяется проелами, вероятно, это системная команда
+                    List<string> messageParts = messageText.Split(" ").ToList();
+                    if (messageText.StartsWith("!") && messageParts.Count == 1)
                     {
-                        Logger.Log(Logger.LogLevel.Warn, $"Внимание! " +
-                            $"Пользователь {update.Message.From.FirstName} {update.Message.From.LastName}({update.Message.From.Username}, {update.Message.From.Id})" +
-                            $"попытался выполнить команду \"{messageText}\", " +
-                            $"но он не пренадлежит ни к одной из доступных ролей");
-                        return;
-                    }
-                    foreach (BotRole role in grantedRoles)
-                    {
-                        if (targetCommand.RoleNames.Contains(role.Name))
+                        // Проверяем, что эту команду может выполнить только админ
+                        if (update.Message.From.Id == WorkingConfiguration.AdminID)
                         {
-                            Logger.Log(Logger.LogLevel.Comand, $"Запуск команды {targetCommand.InvokeCommand} пользователем {update.Message.From.Username} ({update.Message.From.Id})");
-                            var invocationResult = await CommandInvoker.InvokeComand(targetCommand, botClient, (chatID, update.Message.From.Id));
-                            Logger.Log(invocationResult.logLevel,
-                                $"Команда {targetCommand.InvokeCommand} завершена {(invocationResult.success ? "успешно" : "с ошибкой")}");
-                            Logger.Log(Logger.LogLevel.Debug, $"Результат завершения команды {targetCommand.InvokeCommand}: {invocationResult.errorMessage}");
-                            if (!invocationResult.success)
-                            {
-                                invocationResult = CommandInvoker.GetRandomText(targetCommand.ErrorReplyPath);
-                                await botClient.SendMessage(chatID, (invocationResult.success ? invocationResult.errorMessage : "Мне не удалось выполнить эту команду"),
-                                    Telegram.Bot.Types.Enums.ParseMode.Markdown,
-                                    protectContent: false,
-                                    replyParameters:
-                                        new ReplyParameters()
-                                        {
-                                            AllowSendingWithoutReply = false
-                                        }
-                                    );
-                            }
-                            return;
+                            var adminCommand = _roleCommandRatio.FirstOrDefault(x => x.comandName.Trim().ToLower().StartsWith(messageText)).command;
+                            if (adminCommand == null) return;
                         }
                     }
-#pragma warning disable CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
-                    await botClient.SendMessage(chatID, "Я не могу выполнить эту команду, т.к. у тебя надостаточно прав для ее выполнения", cancellationToken: cancellationToken);
-#pragma warning restore CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
-                    // Логировать, что эта команда так-то не для него 
-
-                    // Ну это пиздец, это надо переписывать...
-                    //List<string> availebleCommands = new List<string>();
-                    //foreach (var role in grantedRoles)
-                    //{
-                    //    availebleCommands.Add(AvailebleActions.FindAll(x => x.RoleNames.Contains(role.Name)));
-
-                    //}
-                    //foreach (BotAction action in AvailebleActions)
-                    //{
-
-                    //    //if (string.IsNullOrEmpty(action.RoleNames.Find(x => x.StartsWith(messageText)))) continue;
-                    //    if (action.InvokeCommand.ToLower().StartsWith(messageText))
-                    //    {
-                    //        // Выполнение команды
-                    //    }
-                    //}
+                    var profiles = _roleCommandRatio.FindAll(x => x.UserIds.Contains(update.Message.From.Id));
+                    if (!profiles.Any()) return;
+                    BotAction? userCommand = profiles.FirstOrDefault(x => x.comandName.Trim().ToLower() == messageText).command;
+                    if (userCommand != null)
+                    {
+                        Logger.Log(Logger.LogLevel.Comand, $"Запуск команды {userCommand.InvokeCommand} пользователем {update.Message.From.Username} ({update.Message.From.Id})");
+                        var invocationResult = await CommandInvoker.InvokeComand(userCommand, botClient, (chatID, update.Message.From.Id));
+                        Logger.Log(invocationResult.logLevel,
+                            $"Команда {userCommand.InvokeCommand} завершена {(invocationResult.success ? "успешно" : "с ошибкой")}");
+                        Logger.Log(Logger.LogLevel.Debug, $"Результат завершения команды {userCommand.InvokeCommand}: {invocationResult.errorMessage}");
+                    }
                 }
-                //var message = update.Message;
-                //if (message?.Text?.ToLower() == "/start")
-                //{
-                //    await botClient.SendMessage(message.Chat, "Добро пожаловать на борт, добрый путник!");
-                //    return;
-                //}
-                //await botClient.SendMessage(message.Chat, "Привет-привет!!");
             }
             else
             {
@@ -311,7 +250,6 @@ namespace ElijahTelegramBot.TGBot
 
         private static async Task CheckSystemCommand(string messageText, long chatID)
         {
-            messageText = messageText.Trim().ToLower();
             if (_botClient == null)
             {
                 Logger.Log(Logger.LogLevel.Critical, "Переменная _botClient не может быть NULL. Бот не запущен!");
@@ -341,6 +279,10 @@ namespace ElijahTelegramBot.TGBot
             if (BotErrorsLeft - 1 == 0)
             {
                 Logger.Log(Logger.LogLevel.Critical, "Обработано слишком много ошибок за предыдущие 15 секунд. Остановка приложения");
+            }
+            else
+            {
+                BotErrorsLeft -= 1;
             }
             return Task.CompletedTask;
         }

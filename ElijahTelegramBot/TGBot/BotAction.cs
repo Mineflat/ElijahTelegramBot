@@ -42,9 +42,9 @@ namespace ElijahTelegramBot.TGBot
         public bool ComandEnabled { get; set; } = false;
         public (bool success, string errorMessage, Logger.LogLevel logLevel) Verify()
         {
-            if(!ComandEnabled)
+            if (!ComandEnabled)
             {
-                return (true, $"Действие \"{InvokeCommand}\" помечено как неиспользуемое, поэтому не проверяется", Logger.LogLevel.Warn);
+                return (false, $"Действие \"{InvokeCommand}\" помечено как неиспользуемое, поэтому не проверяется", Logger.LogLevel.Warn);
             }
             string errorList = string.Empty;
             if (string.IsNullOrEmpty(InvokeCommand)) errorList += "\t\tНе задано ключевое свлово для вызова команды (параметр InvokeCommand)\n";
@@ -53,7 +53,7 @@ namespace ElijahTelegramBot.TGBot
                 errorList += "\t\tНе заданы параметры ReplyText и RandomReplyPath: как минимум 1 из них должен быть задан\n";
             if (RoleNames == null || RoleNames.Count == 0) errorList += "\t\tНе заданы роли, которым эта команда доступна. Это обязательный параметр\n";
             if (!File.Exists(ErrorReplyPath)) errorList += $"\t\tНе задан параметр ErrorReplyPath или не существует такого файла (\"{ErrorReplyPath}\"). Это обязательный параметр\n";
-            
+
             if (!string.IsNullOrEmpty(errorList))
             {
                 ComandEnabled = false;
@@ -69,18 +69,6 @@ namespace ElijahTelegramBot.TGBot
                     return postActionVerificationResult;
                 }
             }
-            //if (
-            //    string.IsNullOrEmpty(Type)
-            //    || !File.Exists(FilePath)
-            //    || (string.IsNullOrEmpty(ReplyText) || !File.Exists(RandomReplyPath))
-            //    || (RoleNames == null || RoleNames.Count == 0)
-            //    || !File.Exists(ErrorReplyPath)
-            //    )
-            //{
-            //    ComandEnabled = false;
-            //    return (false, $"Эта команда содержит ошибки, поэтому не может быть активирована: {InvokeCommand}", Logger.LogLevel.Warn);
-            //}
-
 #pragma warning disable CS8602 // Разыменование вероятной пустой ссылки.
             foreach (string roleName in RoleNames)
             {
@@ -113,7 +101,33 @@ namespace ElijahTelegramBot.TGBot
                     ComandEnabled = false;
                     return (false, $"Эта команда не можетбыть активирована, т.к. имеет неизвестный тип выполнения \"{Type}\": {InvokeCommand}", Logger.LogLevel.Warn);
             }
+            // string roleName, string comandName, BotAction command
             ComandEnabled = true;
+            foreach (BotRole role in TGBot.AvailebleRoles)
+            {
+                List<string> buffer = RoleNames.FindAll(x => x.ToLower().Trim() == role.Name.ToLower().Trim());
+                if (buffer.Any())
+                {
+                    for (int i = 0; i < buffer.Count; i++)
+                    {
+                        TGBot._roleCommandRatio.Add(new(buffer[i], this.InvokeCommand, this, role.UserIds));
+                        if (TGBot.WorkingConfiguration.DebugMode)
+                        {
+                            string IDList = "(ID не указаны)";
+                            if (role.UserIds.Count != 0)
+                            {
+                                IDList = string.Empty;
+                                for (int j = 0; j < role.UserIds.Count - 1; j++)
+                                {
+                                    IDList += $"{role.UserIds[j]}, ";
+                                }
+                                IDList += $"{role.UserIds[role.UserIds.Count - 1]}";
+                            }
+                            Logger.Log(Logger.LogLevel.Debug, $"Обновлен параметр для роли:\t\tГруппа {buffer[i]} могут использовать команду {this.InvokeCommand.ToUpper()}: {IDList}");
+                        }
+                    }
+                }
+            }
             return (true, $"Успешно добавлено действие {InvokeCommand}", Logger.LogLevel.Info);
         }
     }
