@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ElijahTelegramBot": {
+      "commandName": "Project",
+      "commandLineArgs": "G:\\CODE\\WSCode\\ElijahTelegramBot\\bin\\config\\config.json"
+    }
+  }
+}
