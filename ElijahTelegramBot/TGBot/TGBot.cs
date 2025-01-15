@@ -157,7 +157,7 @@ namespace ElijahTelegramBot.TGBot
             {
                 return (false, $"Произошла ошибка при применении КОМАНД пользователей: верифицировано слишком мало команд для старта бота", Logger.LogLevel.Critical);
             }
-            return (true, $"Команды пользователей успешно применены. Доступно команд: {AvailebleActions.Count}", Logger.LogLevel.Success);
+            return (true, $"Команды пользователей успешно применены. Доступно команд: {_roleCommandRatio.Count} (по группам) из {AvailebleActions.Count} существующих ", Logger.LogLevel.Success);
         }
         protected (bool success, string errorMessage, Logger.LogLevel logLevel) InitTelegramBot()
         {

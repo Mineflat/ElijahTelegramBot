@@ -10,7 +10,7 @@ namespace ElijahTelegramBot.Core
     {
         public enum LogLevel
         {
-            Error, Debug, Info, Message, Warn, Comand, Success, Critical
+            Error, Debug, Info, Message, Warn, Comand, Success, Critical, Script
         }
 
         public static void Log (LogLevel logLevel, string targetMessage)
