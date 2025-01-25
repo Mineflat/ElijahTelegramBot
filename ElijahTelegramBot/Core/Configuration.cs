@@ -14,5 +14,8 @@ namespace ElijahTelegramBot.Core
         public bool DebugMode { get; set; } = false;
         public long AdminID { get; set; } = -1;
         public string? LogPath { get; set; } = string.Empty;
+        public int? ParallelScriptQueueLimit { get; set; } = null;
+        // Частота очистки списка запущенных задач в минутах
+        public uint ScriptQueueCleaningDelay { get; set; } = 10;
     }
 }

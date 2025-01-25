@@ -7,6 +7,7 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bots;
 using Telegram.Bots.Http;
+using Telegram.Bots.Types;
 
 
 
@@ -14,6 +15,73 @@ namespace ElijahTelegramBot.TGBot
 {
     internal static class CommandInvoker
     {
+        private delegate Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeScriptDelegate(BotAction targetCommand, bool useRandom,
+            (long chatID, long messageID) IDs);
+        private static InvokeScriptDelegate RunScriptNormally = InvokeScript;
+        #region Global commands
+        public static (bool success, string errorMessage, Logger.LogLevel logLevel) Setup()
+        {
+            if (TGBot.WorkingConfiguration.ParallelScriptQueueLimit != null
+                && TGBot.WorkingConfiguration.ParallelScriptQueueLimit > 0)
+            {
+                RunScriptNormally = InvokeScriptWithQueue;
+                var setupResult = Storage.SetupResetTimer();
+                Logger.Log(setupResult.logLevel, setupResult.errorMessage);
+                return (true, $"На выполнение скриптов установлено ограничение:" +
+                    $"\n\tНе более {TGBot.WorkingConfiguration.ParallelScriptQueueLimit} параллельных запусков любых команд типа Script",
+                    Logger.LogLevel.Info);
+            }
+            else
+            {
+                return (true, "Внимание! На выполнение скриптов не установлено ограничение." +
+                    "\n\tКоличество параллельных запусков любых команд типа Script НЕ ОГРАНИЧЕНО" +
+                    "\n\tЧтобы это сообщение не появлялось, задайте параметр ParallelScriptQueueLimit в основном конфигурационном файле приложения",
+                    Logger.LogLevel.Warn);
+            }
+        }
+        public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeComand(BotAction targetCommand,
+            (long chatID, long messageID) IDs)
+        {
+            if (TGBot._botClient == null) return (false, "Не удалось запустить команду, т.к. переменная не инициализирована (TGBot._botClient = null)", Logger.LogLevel.Critical);
+            (bool success, string errorMessage, Logger.LogLevel logLevel) invocationResult;
+            switch (targetCommand.Type.Trim().ToLower())
+            {
+                case "image":
+                    invocationResult = await InvokeImage(targetCommand, false, IDs);
+                    break;
+                case "file":
+                    invocationResult = await InvokeFile(targetCommand, false, IDs);
+                    break;
+                case "full_text":
+                    invocationResult = await InvokeText(targetCommand, false, IDs);
+                    break;
+                case "random_text":
+                    invocationResult = await InvokeText(targetCommand, true, IDs);
+                    break;
+                case "random_image":
+                    invocationResult = await InvokeImage(targetCommand, true, IDs);
+                    break;
+                case "random_file":
+                    invocationResult = await InvokeFile(targetCommand, true, IDs);
+                    break;
+                case "script":
+                    invocationResult = await RunScriptNormally.Invoke(targetCommand, false, IDs);
+                    break;
+                case "random_script":
+                    invocationResult = await RunScriptNormally.Invoke(targetCommand, true, IDs);
+                    break;
+                default:
+                    targetCommand.ComandEnabled = false;
+                    invocationResult = (false,
+                        $"Команда {targetCommand.InvokeCommand} деактивирована, т.к. имеет неизвестный тип выполнения (Type): \"{targetCommand.Type}\"",
+                        Logger.LogLevel.Warn);
+                    break;
+            }
+            if (targetCommand.PostAction != null) return await InvokeComand(targetCommand.PostAction, IDs);
+            return invocationResult;
+        }
+        #endregion
+        #region Subcommands
         private static int GetRandom(int minValue, int maxValue)
         {
             if (minValue > maxValue)
@@ -72,48 +140,11 @@ namespace ElijahTelegramBot.TGBot
                 return (false, $"Не удалось выбрать произвольную строку в файле {fullPath}: {directoryLookupException.Message}", Logger.LogLevel.Error);
             }
         }
-        public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeComand(BotAction targetCommand,
-            ITelegramBotClient _botClient, (long chatID, long messageID) IDs)
-        {
-            (bool success, string errorMessage, Logger.LogLevel logLevel) invocationResult;
-            switch (targetCommand.Type.Trim().ToLower())
-            {
-                case "script":
-                    invocationResult = await InvokeScript(targetCommand, false, _botClient, IDs);
-                    break;
-                case "image":
-                    invocationResult = await InvokeImage(targetCommand, false, _botClient, IDs);
-                    break;
-                case "file":
-                    invocationResult = await InvokeFile(targetCommand, false, _botClient, IDs);
-                    break;
-                case "full_text":
-                    invocationResult = await InvokeText(targetCommand, false, _botClient, IDs);
-                    break;
-                case "random_text":
-                    invocationResult = await InvokeText(targetCommand, true, _botClient, IDs);
-                    break;
-                case "random_image":
-                    invocationResult = await InvokeImage(targetCommand, true, _botClient, IDs);
-                    break;
-                case "random_file":
-                    invocationResult = await InvokeFile(targetCommand, true, _botClient, IDs);
-                    break;
-                case "random_script":
-                    invocationResult = await InvokeScript(targetCommand, true, _botClient, IDs);
-                    break;
-                default:
-                    targetCommand.ComandEnabled = false;
-                    invocationResult = (false,
-                        $"Команда {targetCommand.InvokeCommand} деактивирована, т.к. имеет неизвестный тип выполнения (Type): \"{targetCommand.Type}\"",
-                        Logger.LogLevel.Warn);
-                    break;
-            }
-            if (targetCommand.PostAction != null) return await InvokeComand(targetCommand.PostAction, _botClient, IDs);
-            return invocationResult;
-        }
+        #endregion
+
+        #region Bot action realization by type
         public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeFile(BotAction targetCommand, bool useRandom,
-            ITelegramBotClient _botClient, (long chatID, long messageID) IDs)
+            (long chatID, long messageID) IDs)
         {
             string path = targetCommand.FilePath;
             string replyText = targetCommand.ReplyText;
@@ -126,7 +157,7 @@ namespace ElijahTelegramBot.TGBot
                     path = getRandomPathResult.errorMessage;
                 }
                 Logger.Log(Logger.LogLevel.Info, $"Выбранный файл для команды {targetCommand.InvokeCommand}: {path}");
-                if (File.Exists(targetCommand.RandomReplyPath))
+                if (System.IO.File.Exists(targetCommand.RandomReplyPath))
                 {
                     var getRandomTextResult = GetRandomText(targetCommand.RandomReplyPath);
                     if (getRandomTextResult.success) replyText = getRandomTextResult.errorMessage;
@@ -137,19 +168,23 @@ namespace ElijahTelegramBot.TGBot
                 await using Stream stream = System.IO.File.OpenRead(path);
                 if (filename.ToLower().EndsWith(".mp4"))
                 {
-                    await _botClient.SendVideo(IDs.chatID,
+#pragma warning disable CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
+                    await TGBot._botClient.SendVideo(IDs.chatID,
                     video: Telegram.Bot.Types.InputFile.FromStream(stream, filename),
                     caption: replyText);
+#pragma warning restore CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
                 }
                 else
                 {
-                    await _botClient.SendDocument(IDs.chatID,
+#pragma warning disable CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
+                    await TGBot._botClient.SendDocument(IDs.chatID,
                         document: Telegram.Bot.Types.InputFile.FromStream(stream, filename),
                         caption: replyText);
+#pragma warning restore CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
                 }
                 stream.Dispose();
                 return (true, $"Успешно отправлен файл в чат {IDs.chatID}: {path}", Logger.LogLevel.Success);
-                
+
             }
             catch (Exception CommandInvocationException)
             {
@@ -159,7 +194,7 @@ namespace ElijahTelegramBot.TGBot
             }
         }
         public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeImage(BotAction targetCommand, bool useRandom,
-            ITelegramBotClient _botClient, (long chatID, long messageID) IDs)
+            (long chatID, long messageID) IDs)
         {
             string path = targetCommand.FilePath;
             string replyText = targetCommand.ReplyText;
@@ -172,7 +207,7 @@ namespace ElijahTelegramBot.TGBot
                     path = getRandomPathResult.errorMessage;
                 }
                 Logger.Log(Logger.LogLevel.Info, $"Выбранный файл для команды {targetCommand.InvokeCommand}: {path}");
-                if (File.Exists(targetCommand.RandomReplyPath))
+                if (System.IO.File.Exists(targetCommand.RandomReplyPath))
                 {
                     var getRandomTextResult = GetRandomText(targetCommand.RandomReplyPath);
                     if (getRandomTextResult.success) replyText = getRandomTextResult.errorMessage;
@@ -181,13 +216,15 @@ namespace ElijahTelegramBot.TGBot
                 using (var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
                     var fts = new InputFileStream(fileStream, filename);
-                    await _botClient.SendPhoto(IDs.chatID, fts,
+#pragma warning disable CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
+                    await TGBot._botClient.SendPhoto(IDs.chatID, fts,
                         replyParameters:
                         new ReplyParameters()
                         {
                             AllowSendingWithoutReply = false
                         }, caption: replyText
                     );
+#pragma warning restore CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
                 }
                 return (true, $"Успешно отправлена картинка в чат {IDs.chatID}: {path}", Logger.LogLevel.Comand);
             }
@@ -199,7 +236,7 @@ namespace ElijahTelegramBot.TGBot
             }
         }
         public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeText(BotAction targetCommand, bool useRandom,
-            ITelegramBotClient _botClient, (long chatID, long messageID) IDs)
+            (long chatID, long messageID) IDs)
         {
             try
             {
@@ -212,7 +249,7 @@ namespace ElijahTelegramBot.TGBot
                     FullText = getRandomTextResult.errorMessage;
                 }
 
-                if (File.Exists(targetCommand.RandomReplyPath))
+                if (System.IO.File.Exists(targetCommand.RandomReplyPath))
                 {
                     var getRandomTextResult = GetRandomText(targetCommand.RandomReplyPath);
                     if (getRandomTextResult.success) replyText = getRandomTextResult.errorMessage;
@@ -227,7 +264,8 @@ namespace ElijahTelegramBot.TGBot
                 // У библиотеки ответ прост: а отсосать не хотите? Это конкретный тип ReplyParameters. 
                 // Он такой же спидозный, как и мамаша того овоща, который ее писал
 
-                await _botClient.SendMessage(IDs.chatID, replyText + Environment.NewLine + FullText,
+#pragma warning disable CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
+                await TGBot._botClient.SendMessage(IDs.chatID, replyText + Environment.NewLine + FullText,
                 Telegram.Bot.Types.Enums.ParseMode.Markdown,
                 protectContent: false,
                 replyParameters:
@@ -236,6 +274,7 @@ namespace ElijahTelegramBot.TGBot
                         AllowSendingWithoutReply = false
                     }
                 );
+#pragma warning restore CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
                 return (true, $"Успешно отправлено сообщениев чат {IDs.chatID}:\n{FullText}", Logger.LogLevel.Comand);
             }
             catch (Exception CommandInvocationException)
@@ -246,7 +285,7 @@ namespace ElijahTelegramBot.TGBot
             }
         }
         public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeScript(BotAction targetCommand, bool useRandom,
-            ITelegramBotClient _botClient, (long chatID, long messageID) IDs)
+            (long chatID, long messageID) IDs)
         {
             string path = targetCommand.FilePath;
             try
@@ -258,31 +297,22 @@ namespace ElijahTelegramBot.TGBot
                     path = getRandomPathResult.errorMessage;
                 }
                 Logger.Log(Logger.LogLevel.Info, $"Выбранный файл для команды {targetCommand.InvokeCommand}: {path}");
-                // Постановка в отдельном потоке задачи
-
-                await _botClient.SendMessage(IDs.chatID,
-                    $"Задача не может быть поставлена на выполнение, т.к. этот функционал недоступен в данной версии приложения:\n{path}",
+#pragma warning disable CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
+                await TGBot._botClient.SendMessage(IDs.chatID, $"Задача {targetCommand.InvokeCommand} устанавливается для выполнения:" +
+                    "```" +
+                    $"bash -c {targetCommand.FilePath} {targetCommand.CommandArgs}" +
+                    "```" +
+                    $"Я напишу, когда ее выполнение закончится",
                     Telegram.Bot.Types.Enums.ParseMode.Markdown,
                     protectContent: false,
                     replyParameters:
-                        new ReplyParameters()
-                        {
-                            AllowSendingWithoutReply = false
-                        }
-                    );
-
-                //await _botClient.SendMessage(IDs.chatID,
-                //    $"Задача не может быть поставлена на выполнение, т.к. этот функционал недоступен в данной версии приложения:\n{path}",
-                //    Telegram.Bot.Types.Enums.ParseMode.Markdown,
-                //    protectContent: false,
-                //    replyParameters:
-                //        new ReplyParameters()
-                //        {
-                //            AllowSendingWithoutReply = false
-                //        }
-                //    );
+                    new ReplyParameters()
+                    {
+                        AllowSendingWithoutReply = false
+                    }
+                );
+#pragma warning restore CS8604 // Возможно, аргумент-ссылка, допускающий значение NULL.
                 return (true, $"Задача не может быть поставлена на выполнение, т.к. этот функционал недоступен в данной версии приложения:\n{path}", Logger.LogLevel.Warn);
-                //return (true, $"Успешно поставлена на выполнение задача: {path}", Logger.LogLevel.Comand);    
             }
             catch (Exception CommandInvocationException)
             {
@@ -291,5 +321,15 @@ namespace ElijahTelegramBot.TGBot
                 return (false, $"Ошибка при выполнении команды {targetCommand.InvokeCommand}:\n{CommandInvocationException.Message}", Logger.LogLevel.Error);
             }
         }
+        public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeScriptWithQueue(BotAction targetCommand, bool useRandom,
+            (long chatID, long messageID) IDs)
+        {
+            //var queueAddResult = Storage.AddScriptInQueue();
+            //if (!queueAddResult.success) return queueAddResult;
+            //Logger.Log(queueAddResult.logLevel, queueAddResult.errorMessage);
+            return await InvokeScript(targetCommand, useRandom, IDs);
+        }
+        #endregion
+
     }
 }

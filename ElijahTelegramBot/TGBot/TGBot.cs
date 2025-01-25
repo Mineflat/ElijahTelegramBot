@@ -18,9 +18,9 @@ namespace ElijahTelegramBot.TGBot
         public static CancellationTokenSource? _cts { get; protected set; }
         public static ushort BotErrorsLeft { get; protected set; } = 5;
         private static string _configurationPath = string.Empty;
-        public static List<(string roleName, string comandName, BotAction command, List<long> UserIds)> _roleCommandRatio
+        public static List<(string roleName, string comandName, BotAction command, List<long> UserIds)> _roleCommandRatio { get; protected set; }
             = new List<(string roleName, string comandName, BotAction command, List<long> UserIds)>();
-        private static System.Threading.Timer? timer;
+        private static System.Threading.Timer? _errorListCleanTimer;
         public TGBot(string configurationPath)
         {
             TGBot._roleCommandRatio.Clear();
@@ -58,7 +58,8 @@ namespace ElijahTelegramBot.TGBot
                 VerifyConfigiration,
                 InitRoles,
                 InitCommands,
-                InitTelegramBot
+                InitTelegramBot,
+                CommandInvoker.Setup
             };
             foreach (var func in initFunctions)
             {
@@ -181,7 +182,7 @@ namespace ElijahTelegramBot.TGBot
                 if (!string.IsNullOrEmpty(tokenVerificationResult.Result.Username))
                 {
 #pragma warning disable CS8622 // Допустимость значений NULL для ссылочных типов в типе параметра не соответствует целевому объекту делегирования (возможно, из-за атрибутов допустимости значений NULL).
-                    timer = new System.Threading.Timer(ResetErrorsEvent, null, 0, 15000); // Интервал в миллисекундах (15 секунд)
+                    _errorListCleanTimer = new System.Threading.Timer(ResetErrorsEvent, null, 0, 15000); // Интервал в миллисекундах (15 секунд)
 #pragma warning restore CS8622 // Допустимость значений NULL для ссылочных типов в типе параметра не соответствует целевому объекту делегирования (возможно, из-за атрибутов допустимости значений NULL).
                     return (true, $"Успешный запуск бота {tokenVerificationResult.Result.Username}", Logger.LogLevel.Success);
                 }
@@ -232,7 +233,7 @@ namespace ElijahTelegramBot.TGBot
                     if (userCommand != null)
                     {
                         Logger.Log(Logger.LogLevel.Comand, $"Запуск команды {userCommand.InvokeCommand} пользователем {update.Message.From.Username} ({update.Message.From.Id})");
-                        var invocationResult = await CommandInvoker.InvokeComand(userCommand, botClient, (chatID, update.Message.From.Id));
+                        var invocationResult = await CommandInvoker.InvokeComand(userCommand, (chatID, update.Message.From.Id));
                         Logger.Log(invocationResult.logLevel,
                             $"Команда {userCommand.InvokeCommand} завершена {(invocationResult.success ? "успешно" : "с ошибкой")}");
                         Logger.Log(Logger.LogLevel.Debug, $"Результат завершения команды {userCommand.InvokeCommand}: {invocationResult.errorMessage}");
