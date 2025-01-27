@@ -17,5 +17,6 @@ namespace ElijahTelegramBot.Core
         public int? ParallelScriptQueueLimit { get; set; } = null;
         // Частота очистки списка запущенных задач в минутах
         public uint ScriptQueueCleaningDelay { get; set; } = 10;
+        public uint RenderDelaySec { get; set; } = 2;
     }
 }

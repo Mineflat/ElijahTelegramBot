@@ -57,7 +57,7 @@ namespace ElijahTelegramBot.TGBot
         private static void UpdateScriptQueueTable()
         {
             ScriptQueueTable = new Table();
-            ScriptQueueTable.Title("");
+            ScriptQueueTable.Title("Очередь скриптов");
             ScriptQueueTable.AddColumns([
                 "[thistle1]ID задачи[/]",
                 "[thistle1]Путь к файлу[/]",

@@ -39,8 +39,7 @@ namespace ElijahTelegramBot.TGBot
                     Logger.LogLevel.Warn);
             }
         }
-        public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeComand(BotAction targetCommand,
-            (long chatID, long messageID) IDs)
+        public static async Task<(bool success, string errorMessage, Logger.LogLevel logLevel)> InvokeComand(BotAction targetCommand, (long chatID, long messageID) IDs)
         {
             if (TGBot._botClient == null) return (false, "Не удалось запустить команду, т.к. переменная не инициализирована (TGBot._botClient = null)", Logger.LogLevel.Critical);
             (bool success, string errorMessage, Logger.LogLevel logLevel) invocationResult;
